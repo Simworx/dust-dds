@@ -1,22 +1,34 @@
+use core::pin::Pin;
+
+use alloc::boxed::Box;
+
+use tracing::span;
+
 use crate::{
-    runtime::{ChannelReceive, DdsRuntime, Spawner},
-    subscription::data_reader_listener::DataReaderListener,
+    dcps::channels::mpsc::{MpscSender, mpsc_channel},
+    dds_async::data_reader_listener::DataReaderListener,
+    runtime::{DdsRuntime, Spawner},
 };
 
 use super::domain_participant_listener::ListenerMail;
 
-pub struct DcpsDataReaderListener;
+pub struct DcpsDataReaderListener {
+    sender: MpscSender<ListenerMail>,
+    task: Pin<Box<dyn Future<Output = ()> + Send>>,
+}
 
 impl DcpsDataReaderListener {
-    pub fn spawn<R: DdsRuntime, Foo>(
-        mut listener: impl DataReaderListener<R, Foo> + Send + 'static,
-        spawner_handle: &R::SpawnerHandle,
-    ) -> R::ChannelSender<ListenerMail<R>> {
-        let (listener_sender, mut listener_receiver) = R::channel();
-        spawner_handle.spawn(async move {
+    #[tracing::instrument(skip(listener,))]
+    pub fn new<Foo>(mut listener: impl DataReaderListener<Foo> + Send + 'static) -> Self {
+        let (sender, listener_receiver) = mpsc_channel();
+        let task = Box::pin(async move {
             while let Some(m) = listener_receiver.receive().await {
+                let listener_root = span!(tracing::Level::INFO, "data_reader_listener_triggered");
+                let _listener_span_guard = listener_root.enter();
                 match m {
                     ListenerMail::DataAvailable { the_reader } => {
+                        let root = span!(tracing::Level::INFO, "on_data_available");
+                        let _guard = root.enter();
                         listener
                             .on_data_available(the_reader.change_foo_type())
                             .await;
@@ -65,6 +77,14 @@ impl DcpsDataReaderListener {
                 }
             }
         });
-        listener_sender
+        Self { sender, task }
+    }
+
+    pub fn spawn<R: DdsRuntime>(
+        self,
+        spawner_handle: &R::SpawnerHandle,
+    ) -> MpscSender<ListenerMail> {
+        spawner_handle.spawn(self.task);
+        self.sender
     }
 }

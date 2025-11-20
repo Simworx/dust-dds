@@ -1,55 +1,52 @@
 use crate::{
     dcps::{
-        actor::ActorAddress, status_condition::DcpsStatusCondition,
+        actor::ActorAddress,
+        channels::{mpsc::MpscReceiver, oneshot::oneshot},
+        status_condition::DcpsStatusCondition,
         status_condition_mail::DcpsStatusConditionMail,
     },
     infrastructure::{error::DdsResult, status::StatusKind},
-    runtime::{DdsRuntime, OneshotReceive},
 };
 use alloc::vec::Vec;
 
 /// Async version of [`StatusCondition`](crate::infrastructure::condition::StatusCondition).
-pub struct StatusConditionAsync<R: DdsRuntime> {
-    address: ActorAddress<R, DcpsStatusCondition<R>>,
-    clock_handle: R::ClockHandle,
+pub struct StatusConditionAsync {
+    address: ActorAddress<DcpsStatusCondition>,
 }
 
-impl<R: DdsRuntime> Clone for StatusConditionAsync<R> {
+impl Clone for StatusConditionAsync {
     fn clone(&self) -> Self {
         Self {
             address: self.address.clone(),
-            clock_handle: self.clock_handle.clone(),
         }
     }
 }
 
-impl<R: DdsRuntime> StatusConditionAsync<R> {
-    pub(crate) fn new(
-        address: ActorAddress<R, DcpsStatusCondition<R>>,
-        clock_handle: R::ClockHandle,
-    ) -> Self {
-        Self {
-            address,
-            clock_handle,
-        }
+impl StatusConditionAsync {
+    pub(crate) fn new(address: ActorAddress<DcpsStatusCondition>) -> Self {
+        Self { address }
     }
 
-    pub(crate) fn clock_handle(&self) -> &R::ClockHandle {
-        &self.clock_handle
+    pub(crate) async fn register_notification(&self) -> DdsResult<MpscReceiver<()>> {
+        let (reply_sender, reply_receiver) = oneshot();
+        self.address
+            .send_actor_mail(DcpsStatusConditionMail::RegisterNotification { reply_sender })
+            .await?;
+        reply_receiver.await
     }
 }
 
-impl<R: DdsRuntime> StatusConditionAsync<R> {
+impl StatusConditionAsync {
     /// Async version of [`get_enabled_statuses`](crate::infrastructure::condition::StatusCondition::get_enabled_statuses).
     #[tracing::instrument(skip(self))]
     pub async fn get_enabled_statuses(&self) -> DdsResult<Vec<StatusKind>> {
-        let (reply_sender, reply_receiver) = R::oneshot();
+        let (reply_sender, reply_receiver) = oneshot();
         self.address
             .send_actor_mail(DcpsStatusConditionMail::GetStatusConditionEnabledStatuses {
                 reply_sender,
             })
             .await?;
-        reply_receiver.receive().await
+        reply_receiver.await
     }
 
     /// Async version of [`set_enabled_statuses`](crate::infrastructure::condition::StatusCondition::set_enabled_statuses).
@@ -70,16 +67,16 @@ impl<R: DdsRuntime> StatusConditionAsync<R> {
     }
 }
 
-impl<R: DdsRuntime> StatusConditionAsync<R> {
+impl StatusConditionAsync {
     /// Async version of [`get_trigger_value`](crate::infrastructure::condition::StatusCondition::get_trigger_value).
     #[tracing::instrument(skip(self))]
     pub async fn get_trigger_value(&self) -> DdsResult<bool> {
-        let (reply_sender, reply_receiver) = R::oneshot();
+        let (reply_sender, reply_receiver) = oneshot();
         self.address
             .send_actor_mail(DcpsStatusConditionMail::GetStatusConditionTriggerValue {
                 reply_sender,
             })
             .await?;
-        reply_receiver.receive().await
+        reply_receiver.await
     }
 }

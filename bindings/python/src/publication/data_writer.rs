@@ -13,106 +13,72 @@ use crate::{
         },
         time::{Duration, Time},
     },
-    topic_definition::{topic_description::TopicDescription, type_support::PythonDdsData},
+    topic_definition::{
+        topic_description::TopicDescription,
+        type_support::{PythonDdsData, convert_python_instance_to_dynamic_data},
+    },
 };
 
 use super::{data_writer_listener::DataWriterListener, publisher::Publisher};
 
 #[pyclass]
-pub struct DataWriter(
-    dust_dds::publication::data_writer::DataWriter<
-        dust_dds::std_runtime::StdRuntime,
-        PythonDdsData,
-    >,
-);
+pub struct DataWriter(dust_dds::publication::data_writer::DataWriter<PythonDdsData>);
 
-impl
-    From<
-        dust_dds::publication::data_writer::DataWriter<
-            dust_dds::std_runtime::StdRuntime,
-            PythonDdsData,
-        >,
-    > for DataWriter
-{
-    fn from(
-        value: dust_dds::publication::data_writer::DataWriter<
-            dust_dds::std_runtime::StdRuntime,
-            PythonDdsData,
-        >,
-    ) -> Self {
+impl From<dust_dds::publication::data_writer::DataWriter<PythonDdsData>> for DataWriter {
+    fn from(value: dust_dds::publication::data_writer::DataWriter<PythonDdsData>) -> Self {
         Self(value)
     }
 }
 
-impl
-    From<
-        dust_dds::dds_async::data_writer::DataWriterAsync<
-            dust_dds::std_runtime::StdRuntime,
-            PythonDdsData,
-        >,
-    > for DataWriter
-{
-    fn from(
-        value: dust_dds::dds_async::data_writer::DataWriterAsync<
-            dust_dds::std_runtime::StdRuntime,
-            PythonDdsData,
-        >,
-    ) -> Self {
+impl From<dust_dds::dds_async::data_writer::DataWriterAsync<PythonDdsData>> for DataWriter {
+    fn from(value: dust_dds::dds_async::data_writer::DataWriterAsync<PythonDdsData>) -> Self {
         Self(dust_dds::publication::data_writer::DataWriter::from(value))
     }
 }
 
-impl
-    AsRef<
-        dust_dds::publication::data_writer::DataWriter<
-            dust_dds::std_runtime::StdRuntime,
-            PythonDdsData,
-        >,
-    > for DataWriter
-{
-    fn as_ref(
-        &self,
-    ) -> &dust_dds::publication::data_writer::DataWriter<
-        dust_dds::std_runtime::StdRuntime,
-        PythonDdsData,
-    > {
+impl AsRef<dust_dds::publication::data_writer::DataWriter<PythonDdsData>> for DataWriter {
+    fn as_ref(&self) -> &dust_dds::publication::data_writer::DataWriter<PythonDdsData> {
         &self.0
     }
 }
 
 #[pymethods]
 impl DataWriter {
-    pub fn register_instance(&self, instance: Py<PyAny>) -> PyResult<Option<InstanceHandle>> {
+    pub fn register_instance(
+        &self,
+        instance: Bound<'_, PyAny>,
+    ) -> PyResult<Option<InstanceHandle>> {
         Ok(self
             .0
-            .register_instance(&PythonDdsData::from_py_object(instance)?)
+            .register_instance(&convert_python_instance_to_dynamic_data(instance)?.into())
             .map_err(into_pyerr)?
             .map(InstanceHandle::from))
     }
 
     pub fn register_instance_w_timestamp(
         &self,
-        instance: Py<PyAny>,
+        instance: Bound<'_, PyAny>,
         timestamp: Time,
     ) -> PyResult<Option<InstanceHandle>> {
         Ok(self
             .0
             .register_instance_w_timestamp(
-                &PythonDdsData::from_py_object(instance)?,
+                &convert_python_instance_to_dynamic_data(instance)?.into(),
                 timestamp.into(),
             )
             .map_err(into_pyerr)?
             .map(InstanceHandle::from))
     }
 
+    #[pyo3(signature = (instance, handle = None))]
     pub fn unregister_instance(
         &self,
-        instance: Py<PyAny>,
+        instance: Bound<'_, PyAny>,
         handle: Option<InstanceHandle>,
     ) -> PyResult<()> {
         self.0
             .unregister_instance(
-                PythonDdsData::from_py_object(instance)?,
+                convert_python_instance_to_dynamic_data(instance)?.into(),
                 handle.map(|h| h.into()),
             )
             .map_err(into_pyerr)
@@ -121,35 +87,40 @@ impl DataWriter {
     #[pyo3(signature = (instance, handle, timestamp))]
     pub fn unregister_instance_w_timestamp(
         &self,
-        instance: Py<PyAny>,
+        instance: Bound<'_, PyAny>,
         handle: Option<InstanceHandle>,
         timestamp: Time,
     ) -> PyResult<()> {
         self.0
             .unregister_instance_w_timestamp(
-                PythonDdsData::from_py_object(instance)?,
+                convert_python_instance_to_dynamic_data(instance)?.into(),
                 handle.map(|h| h.into()),
                 timestamp.into(),
             )
             .map_err(into_pyerr)
     }
 
-    pub fn get_key_value(&self, _key_holder: Py<PyAny>, _handle: InstanceHandle) -> PyResult<()> {
+    pub fn get_key_value(
+        &self,
+        _key_holder: Bound<'_, PyAny>,
+        _handle: InstanceHandle,
+    ) -> PyResult<()> {
         unimplemented!()
     }
 
-    pub fn lookup_instance(&self, instance: Py<PyAny>) -> PyResult<Option<InstanceHandle>> {
+    pub fn lookup_instance(&self, instance: Bound<'_, PyAny>) -> PyResult<Option<InstanceHandle>> {
         Ok(self
             .0
-            .lookup_instance(PythonDdsData::from_py_object(instance)?)
+            .lookup_instance(convert_python_instance_to_dynamic_data(instance)?.into())
             .map_err(into_pyerr)?
             .map(InstanceHandle::from))
     }
 
-    pub fn write(&self, data: Py<PyAny>, handle: Option<InstanceHandle>) -> PyResult<()> {
+    #[pyo3(signature = (data, handle = None))]
+    pub fn write(&self, data: Bound<'_, PyAny>, handle: Option<InstanceHandle>) -> PyResult<()> {
         self.0
             .write(
-                PythonDdsData::from_py_object(data)?,
+                convert_python_instance_to_dynamic_data(data)?.into(),
                 handle.map(|h| h.into()),
             )
             .map_err(into_pyerr)
@@ -158,23 +129,23 @@ impl DataWriter {
     #[pyo3(signature = (data, handle, timestamp))]
     pub fn write_w_timestamp(
         &self,
-        data: Py<PyAny>,
+        data: Bound<'_, PyAny>,
         handle: Option<InstanceHandle>,
         timestamp: Time,
     ) -> PyResult<()> {
         self.0
             .write_w_timestamp(
-                PythonDdsData::from_py_object(data)?,
+                convert_python_instance_to_dynamic_data(data)?.into(),
                 handle.map(|h| h.into()),
                 timestamp.into(),
             )
             .map_err(into_pyerr)
     }
 
-    pub fn dispose(&self, data: Py<PyAny>, handle: Option<InstanceHandle>) -> PyResult<()> {
+    pub fn dispose(&self, data: Bound<'_, PyAny>, handle: Option<InstanceHandle>) -> PyResult<()> {
         self.0
             .dispose(
-                PythonDdsData::from_py_object(data)?,
+                convert_python_instance_to_dynamic_data(data)?.into(),
                 handle.map(|h| h.into()),
             )
             .map_err(into_pyerr)
@@ -183,13 +154,13 @@ impl DataWriter {
     #[pyo3(signature = (data, handle, timestamp))]
     pub fn dispose_w_timestamp(
         &self,
-        data: Py<PyAny>,
+        data: Bound<'_, PyAny>,
         handle: Option<InstanceHandle>,
         timestamp: Time,
     ) -> PyResult<()> {
         self.0
             .dispose_w_timestamp(
-                PythonDdsData::from_py_object(data)?,
+                convert_python_instance_to_dynamic_data(data)?.into(),
                 handle.map(|h| h.into()),
                 timestamp.into(),
             )

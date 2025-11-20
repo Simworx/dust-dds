@@ -18,7 +18,7 @@ use crate::{
     subscription::{subcriber_listener::SubscriberListener, subscriber::Subscriber},
     topic_definition::{
         topic_description::TopicDescription, topic_listener::TopicListener,
-        type_support::PythonTypeRepresentation,
+        type_support::convert_python_type_to_dynamic_type,
     },
 };
 
@@ -27,32 +27,16 @@ use super::domain_participant_listener::DomainParticipantListener;
 static TYPE_REGISTRY: OnceLock<Mutex<HashMap<String, Py<PyAny>>>> = OnceLock::new();
 
 #[pyclass]
-pub struct DomainParticipant(
-    dust_dds::domain::domain_participant::DomainParticipant<dust_dds::std_runtime::StdRuntime>,
-);
+pub struct DomainParticipant(dust_dds::domain::domain_participant::DomainParticipant);
 
-impl
-    From<dust_dds::domain::domain_participant::DomainParticipant<dust_dds::std_runtime::StdRuntime>>
-    for DomainParticipant
-{
-    fn from(
-        value: dust_dds::domain::domain_participant::DomainParticipant<
-            dust_dds::std_runtime::StdRuntime,
-        >,
-    ) -> Self {
+impl From<dust_dds::domain::domain_participant::DomainParticipant> for DomainParticipant {
+    fn from(value: dust_dds::domain::domain_participant::DomainParticipant) -> Self {
         Self(value)
     }
 }
 
-impl
-    AsRef<
-        dust_dds::domain::domain_participant::DomainParticipant<dust_dds::std_runtime::StdRuntime>,
-    > for DomainParticipant
-{
-    fn as_ref(
-        &self,
-    ) -> &dust_dds::domain::domain_participant::DomainParticipant<dust_dds::std_runtime::StdRuntime>
-    {
+impl AsRef<dust_dds::domain::domain_participant::DomainParticipant> for DomainParticipant {
+    fn as_ref(&self) -> &dust_dds::domain::domain_participant::DomainParticipant {
         &self.0
     }
 }
@@ -157,10 +141,10 @@ impl DomainParticipant {
             .unwrap()
             .insert(type_name.clone(), type_.clone());
 
-        let dynamic_type_representation =
-            Arc::new(dust_dds::xtypes::dynamic_type::DynamicType::from(
-                PythonTypeRepresentation::try_from(type_)?,
-            ));
+        let dynamic_type_representation = Arc::new(Python::attach(|py| {
+            convert_python_type_to_dynamic_type(type_.bind(py))
+        })?);
+
         let r = self.0.create_dynamic_topic(
             &topic_name,
             &type_name,
